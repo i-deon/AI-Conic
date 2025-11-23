@@ -42,3 +42,7 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+ai:
+  server:
+    url: http://localhost:8000

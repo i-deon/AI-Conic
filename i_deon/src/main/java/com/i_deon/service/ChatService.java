@@ -1,12 +1,9 @@
 package com.i_deon.service;
 
+import com.i_deon.client.AiClient;
 import com.i_deon.domain.*;
-import com.i_deon.dto.request.EndChatRequest;
-import com.i_deon.dto.request.SendMessageRequest;
-import com.i_deon.dto.request.StartChatRequest;
-import com.i_deon.dto.response.EndChatResponse;
-import com.i_deon.dto.response.SendMessageResponse;
-import com.i_deon.dto.response.StartChatResponse;
+import com.i_deon.dto.request.*;
+import com.i_deon.dto.response.*;
 import com.i_deon.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,9 +23,7 @@ public class ChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final AnalysisReportRepository reportRepository;
-
-    // TODO: LLM 클라이언트 주입 필요
-    // private final LlmClient llmClient;
+    private final AiClient aiClient;  // AI 클라이언트 주입
 
     @Transactional
     public StartChatResponse startSession(Long userId, StartChatRequest request) {
@@ -43,13 +40,13 @@ public class ChatService {
 
         sessionRepository.save(session);
 
-        // TODO: LLM으로 개인화된 인사말 생성
-        String greeting = getGreetingByGuardian(guardianType);
-
-        return new StartChatResponse(
-                session.getSessionId(),
-                greeting
+        // AI 서버에서 개인화된 인사말 생성
+        String greeting = aiClient.sendChatMessage(
+                "수호자 타입: " + guardianType + ", 초기 감정: " + request.emotion() + "에 맞는 인사말을 생성해주세요.",
+                "llama3.2:latest"  // 또는 사용할 모델명
         );
+
+        return new StartChatResponse(session.getSessionId(), greeting);
     }
 
     @Transactional
@@ -72,8 +69,11 @@ public class ChatService {
                 .build();
         messageRepository.save(userMessage);
 
-        // TODO: LLM 호출하여 응답 생성
-        String aiReply = generateAiReply(session, request.content());
+        // AI 서버에서 응답 생성
+        String aiReply = aiClient.sendChatMessage(
+                request.content(),
+                "llama3.2:latest"
+        );
 
         // AI 응답 저장
         ChatMessage aiMessage = ChatMessage.builder()
@@ -94,41 +94,46 @@ public class ChatService {
         ChatSession session = sessionRepository.findBySessionIdAndUser(request.sessionId(), user)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found"));
 
-        // 세션 종료
         session.endSession();
 
-        // 전체 대화 내역 조회
         List<ChatMessage> messages = messageRepository.findBySessionOrderByCreatedAtAsc(session);
 
-        // TODO: LLM으로 대화 분석 및 리포트 생성
-        EndChatResponse analysisResult = analyzeConversation(messages, session);
+        // 대화 내용을 텍스트로 변환
+        String conversationText = messages.stream()
+                .map(msg -> msg.getSenderType() + ": " + msg.getContent())
+                .collect(Collectors.joining("\n"));
+
+        // AI 서버에서 대화 분석
+        Map<String, Object> analysisResult = aiClient.analyzeConversation(conversationText);
+
+        // 분석 결과를 DTO로 변환 (실제 응답 구조에 맞게 수정 필요)
+        EndChatResponse response = convertToEndChatResponse(analysisResult);
 
         // 분석 리포트 저장
         AnalysisReport report = AnalysisReport.builder()
                 .user(user)
-                .mainEmotionKeyword(analysisResult.primaryEmotion())
-                .emotionComposition(convertStatsToJson(analysisResult.stats()))
-                .bossName(analysisResult.boss().name())
-                .bossDescription(analysisResult.boss().description())
-                .bossImageCode(analysisResult.boss().title())
+                .mainEmotionKeyword(response.primaryEmotion())
+                .emotionComposition(convertStatsToJson(response.stats()))
+                .bossName(response.boss().name())
+                .bossDescription(response.boss().description())
+                .bossImageCode(response.boss().title())
                 .missionType(session.getGuardianType().name())
-                .missionTitle(analysisResult.mission())
-                .missionDescription(analysisResult.boss().weakness())
+                .missionTitle(response.mission())
+                .missionDescription(response.boss().weakness())
                 .build();
         reportRepository.save(report);
 
         return new EndChatResponse(
                 report.getReportId(),
-                analysisResult.date(),
-                analysisResult.primaryEmotion(),
-                analysisResult.stats(),
-                analysisResult.boss(),
-                analysisResult.mission()
+                response.date(),
+                response.primaryEmotion(),
+                response.stats(),
+                response.boss(),
+                response.mission()
         );
     }
 
-    // === 이메일 기반 메서드 추가 ===
-
+    // 이메일 기반 메서드들
     @Transactional
     public StartChatResponse startSessionByEmail(String email, StartChatRequest request) {
         User user = userRepository.findByEmail(email)
@@ -150,62 +155,26 @@ public class ChatService {
         return endSession(user.getUserId(), request);
     }
 
-    // === 헬퍼 메서드 ===
-
-    private String getGreetingByGuardian(GuardianType type) {
-        return switch (type) {
-            case WARMTH -> "어서와... 오늘 하루 어땠어? 천천히 이야기해줘도 괜찮아.";
-            case ACTION -> "안녕! 오늘은 어떤 문제를 함께 해결해볼까?";
-            case INSIGHT -> "반가워요. 오늘의 감정을 함께 들여다볼 준비가 되었나요?";
-            case STORM -> "왔구나! 오늘 뭐든 시원하게 털어놔봐. 다 받아줄게!";
-        };
-    }
-
-    private String generateAiReply(ChatSession session, String userMessage) {
-        // TODO: LLM 연동
-        // 임시 응답
-        GuardianType type = session.getGuardianType();
-        return switch (type) {
-            case WARMTH -> "그랬구나... 그런 상황이었다면 정말 힘들었겠어. 네 감정은 충분히 타당해.";
-            case ACTION -> "상황을 정리해보자. 지금 당장 할 수 있는 첫 번째 단계는 뭘까?";
-            case INSIGHT -> "흥미롭네요. 그 감정 뒤에는 어떤 생각이나 기억이 있을까요?";
-            case STORM -> "그래그래, 다 쏟아내! 참지 말고 네가 느낀 그대로 말해봐!";
-        };
-    }
-
-    private EndChatResponse analyzeConversation(List<ChatMessage> messages, ChatSession session) {
-        // TODO: LLM으로 실제 분석
-        // 임시 더미 데이터
+    // 헬퍼 메서드
+    private EndChatResponse convertToEndChatResponse(Map<String, Object> analysisResult) {
+        // AI 서버 응답 구조에 맞게 변환
+        // 실제 구현은 Python FastAPI 응답 형식에 맞춰 수정 필요
         return new EndChatResponse(
-                null, // reportId는 저장 후 설정됨
+                null,
                 LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
-                "불안",
-                List.of(
-                        new EndChatResponse.EmotionStat("WARMTH", 60),
-                        new EndChatResponse.EmotionStat("INSIGHT", 20),
-                        new EndChatResponse.EmotionStat("ACTION", 10),
-                        new EndChatResponse.EmotionStat("STORM", 10)
-                ),
-                new EndChatResponse.BossInfo(
-                        "축축한 늪의 슬라임",
-                        "The Shadow of Anxiety",
-                        "두려움의 감정이 뭉쳐서 만들어진 몬스터입니다.",
-                        "오늘 있었던 감사한 일 3가지 찾아보기",
-                        1
-                ),
-                "오늘 있었던 감사한 일 3가지 찾아보기"
+                (String) analysisResult.get("primary_emotion"),
+                List.of(),  // 실제 통계 변환
+                null,  // 실제 보스 정보 변환
+                (String) analysisResult.get("mission")
         );
     }
 
     private String convertStatsToJson(List<EndChatResponse.EmotionStat> stats) {
-        // 간단한 JSON 문자열 생성 (Jackson 사용 권장)
         StringBuilder json = new StringBuilder("{");
         for (int i = 0; i < stats.size(); i++) {
             EndChatResponse.EmotionStat stat = stats.get(i);
             json.append("\"").append(stat.type()).append("\":").append(stat.percentage());
-            if (i < stats.size() - 1) {
-                json.append(",");
-            }
+            if (i < stats.size() - 1) json.append(",");
         }
         json.append("}");
         return json.toString();
