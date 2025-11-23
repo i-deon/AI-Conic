@@ -38,7 +38,7 @@ export const GUARDIANS: Record<GuardianType, Guardian> = {
     desc: '판단하지 않고 따뜻하게 들어줍니다.',
     quote: '많이 힘들었지? 여기선 푹 쉬어도 돼.',
     imageSrc: lumiImg,
-    affinityLevel: 10, // LV.4 -> 챕터 3까지 해금됨
+    affinityLevel: 5, // LV.4 -> 챕터 3까지 해금됨
     stories: [
       { 
         level: 1, 

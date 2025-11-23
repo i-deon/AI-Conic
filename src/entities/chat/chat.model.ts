@@ -7,7 +7,6 @@ export interface Message {
   timestamp: Date;
 }
 
-// 수호자별 응답 리스트 (랜덤 선택용)
 const REPLIES: Record<GuardianType, (text: string) => string[]> = {
   WARMTH: (text) => [
     `그랬구나... "${text}"라고 생각했구나. 많이 힘들었지?`,
