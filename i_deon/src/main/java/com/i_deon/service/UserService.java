@@ -11,7 +11,6 @@ import com.i_deon.repository.GuardianAffinityRepository;
 import com.i_deon.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -25,9 +24,8 @@ public class UserService {
     private final GuardianAffinityRepository affinityRepository;
     private final AnalysisReportRepository reportRepository;
 
-    @Transactional(readOnly = true)
-    public UserProfileResponse getMyProfile(Long userId) {
-        User user = userRepository.findById(userId)
+    public UserProfileResponse getProfileByEmail(String email) {
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         List<GuardianAffinity> affinities = affinityRepository.findByUser(user);
@@ -49,7 +47,7 @@ public class UserService {
         List<UserProfileResponse.CollectedBoss> bosses = reports.stream()
                 .map(r -> new UserProfileResponse.CollectedBoss(
                         r.getBossName(),
-                        1
+                        1  // 고정 레벨 예시
                 ))
                 .toList();
 
@@ -64,17 +62,8 @@ public class UserService {
         );
     }
 
-    private Map<GuardianType, Integer> initEqMap() {
-        Map<GuardianType, Integer> map = new EnumMap<>(GuardianType.class);
-        for (GuardianType type : GuardianType.values()) {
-            map.put(type, 0);
-        }
-        return map;
-    }
-
-    @Transactional(readOnly = true)
-    public List<GuardianCodexResponse> getCodex(Long userId) {
-        User user = userRepository.findById(userId)
+    public List<GuardianCodexResponse> getCodexByEmail(String email) {
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         List<GuardianAffinity> affinities = affinityRepository.findByUser(user);
@@ -86,5 +75,13 @@ public class UserService {
                         a.getStoryProgress()
                 ))
                 .toList();
+    }
+
+    private Map<GuardianType, Integer> initEqMap() {
+        Map<GuardianType, Integer> map = new EnumMap<>(GuardianType.class);
+        for (GuardianType type : GuardianType.values()) {
+            map.put(type, 0);
+        }
+        return map;
     }
 }

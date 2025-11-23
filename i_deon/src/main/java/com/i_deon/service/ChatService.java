@@ -24,7 +24,6 @@ public class ChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final AnalysisReportRepository reportRepository;
-    private final GuardianAffinityRepository affinityRepository;
 
     // TODO: LLM 클라이언트 주입 필요
     // private final LlmClient llmClient;
@@ -126,6 +125,29 @@ public class ChatService {
                 analysisResult.boss(),
                 analysisResult.mission()
         );
+    }
+
+    // === 이메일 기반 메서드 추가 ===
+
+    @Transactional
+    public StartChatResponse startSessionByEmail(String email, StartChatRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return startSession(user.getUserId(), request);
+    }
+
+    @Transactional
+    public SendMessageResponse sendMessageByEmail(String email, SendMessageRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return sendMessage(user.getUserId(), request);
+    }
+
+    @Transactional
+    public EndChatResponse endSessionByEmail(String email, EndChatRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return endSession(user.getUserId(), request);
     }
 
     // === 헬퍼 메서드 ===
