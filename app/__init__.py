@@ -1,0 +1,1 @@
+# for check app as module
